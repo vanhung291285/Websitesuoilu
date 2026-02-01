@@ -137,10 +137,16 @@ export const DatabaseService = {
 
   getPosts: async (limitCount: number = 20): Promise<Post[]> => {
     const cached = getCache(CACHE_KEYS.POSTS_HOME);
-    const fetchPromise = supabase.from('posts').select('id, title, slug, summary, thumbnail, created_at, category, date, views, status, is_featured, show_on_home').eq('status', 'published').order('created_at', { ascending: false }).limit(limitCount)
+    const fetchPromise = supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount)
       .then(({ data, error }) => {
           if (error) throw error;
-          const posts = (data || []).map((p: any) => ({ ...p, tags: [], attachments: [], blockIds: [] })) as Post[];
+          const posts = (data || []).map((p: any) => ({ 
+            ...p, 
+            imageCaption: p.image_caption,
+            blockIds: p.block_ids || [],
+            tags: p.tags || [], 
+            attachments: p.attachments || [],
+          })) as Post[];
           setCache(CACHE_KEYS.POSTS_HOME, posts);
           return posts;
       });
@@ -148,7 +154,7 @@ export const DatabaseService = {
   },
 
   savePost: async (post: Post) => {
-    const dbPost = { title: post.title, slug: post.slug, summary: post.summary, content: post.content, thumbnail: post.thumbnail, author: post.author, date: post.date, category: post.category, status: post.status, is_featured: post.isFeatured, show_on_home: post.showOnHome, tags: post.tags, attachments: post.attachments, block_ids: post.blockIds };
+    const dbPost = { title: post.title, slug: post.slug, summary: post.summary, content: post.content, thumbnail: post.thumbnail, image_caption: post.imageCaption, author: post.author, date: post.date, category: post.category, status: post.status, is_featured: post.isFeatured, show_on_home: post.showOnHome, tags: post.tags, attachments: post.attachments, block_ids: post.blockIds };
     if (isRealId(post.id)) await supabase.from('posts').update(dbPost).eq('id', post.id);
     else await supabase.from('posts').insert(dbPost);
     localStorage.removeItem(CACHE_KEYS.POSTS_HOME);
@@ -193,7 +199,6 @@ export const DatabaseService = {
     else await supabase.from('documents').insert(dbDoc);
   },
 
-  // Fix: Add missing deleteDocument method
   deleteDocument: (id: string) => supabase.from('documents').delete().eq('id', id),
 
   getAlbums: async (): Promise<GalleryAlbum[]> => {
@@ -207,7 +212,6 @@ export const DatabaseService = {
     else await supabase.from('gallery_albums').insert(dbAlbum);
   },
 
-  // Fix: Add missing deleteAlbum method
   deleteAlbum: (id: string) => supabase.from('gallery_albums').delete().eq('id', id),
 
   getBlocks: async (): Promise<DisplayBlock[]> => {
@@ -223,7 +227,6 @@ export const DatabaseService = {
       else await supabase.from('display_blocks').insert(dbBlock);
   },
 
-  // Fix: Add missing deleteBlock method
   deleteBlock: (id: string) => supabase.from('display_blocks').delete().eq('id', id),
 
   saveBlocksOrder: async (blocks: DisplayBlock[]) => {
@@ -244,11 +247,9 @@ export const DatabaseService = {
   saveMenu: async (items: MenuItem[]) => {
       for (const m of items) {
           const dbMenu = { label: m.label, path: m.path, order_index: m.order };
-          // Kiểm tra nếu ID là ID thật từ Database (UUID 36 ký tự)
           if (isRealId(m.id)) {
               await supabase.from('menu_items').update(dbMenu).eq('id', m.id);
           } else {
-              // Nếu là ID tạm thời (menu_...), bỏ qua ID để DB tự tạo UUID mới
               await supabase.from('menu_items').insert(dbMenu);
           }
       }
@@ -271,7 +272,6 @@ export const DatabaseService = {
     else await supabase.from('post_categories').insert(dbCat);
   },
 
-  // Fix: Add missing deletePostCategory method
   deletePostCategory: (id: string) => supabase.from('post_categories').delete().eq('id', id),
 
   getDocCategories: async (): Promise<DocumentCategory[]> => {
@@ -285,10 +285,8 @@ export const DatabaseService = {
     else await supabase.from('document_categories').insert(dbCat);
   },
 
-  // Fix: Add missing deleteDocCategory method
   deleteDocCategory: (id: string) => supabase.from('document_categories').delete().eq('id', id),
 
-  // Fix: Add missing saveDocCategoriesOrder method
   saveDocCategoriesOrder: async (categories: DocumentCategory[]) => {
       for (const c of categories) await supabase.from('document_categories').update({ order_index: c.order }).eq('id', c.id);
   },
@@ -304,7 +302,6 @@ export const DatabaseService = {
     else await supabase.from('videos').insert(dbVideo);
   },
 
-  // Fix: Add missing deleteVideo method
   deleteVideo: (id: string) => supabase.from('videos').delete().eq('id', id),
 
   getIntroductions: async (): Promise<IntroductionArticle[]> => {
@@ -318,7 +315,6 @@ export const DatabaseService = {
     else await supabase.from('school_introductions').insert(dbIntro);
   },
 
-  // Fix: Add missing deleteIntroduction method
   deleteIntroduction: (id: string) => supabase.from('school_introductions').delete().eq('id', id),
 
   getGallery: async (): Promise<GalleryImage[]> => {
@@ -326,17 +322,14 @@ export const DatabaseService = {
      return (data || []).map((i: any) => ({ id: i.id, url: i.url, caption: i.caption, albumId: i.album_id }));
   },
 
-  // Fix: Add missing saveImage method
   saveImage: async (image: GalleryImage) => {
     const dbImage = { url: image.url, caption: image.caption, album_id: image.albumId };
     if (isRealId(image.id)) await supabase.from('gallery_images').update(dbImage).eq('id', image.id);
     else await supabase.from('gallery_images').insert(dbImage);
   },
 
-  // Fix: Add missing deleteImage method
   deleteImage: (id: string) => supabase.from('gallery_images').delete().eq('id', id),
 
-  // Fix: Add missing getUsers method
   getUsers: async (): Promise<User[]> => {
     const { data } = await supabase.from('user_profiles').select('*');
     return (data || []).map((u: any) => ({
