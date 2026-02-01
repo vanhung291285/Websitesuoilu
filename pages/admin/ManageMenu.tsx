@@ -11,6 +11,7 @@ interface ManageMenuProps {
 export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // State for new item
   const [newLabel, setNewLabel] = useState('');
@@ -24,9 +25,14 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
 
   const loadMenu = async () => {
       setIsLoading(true);
-      const items = await DatabaseService.getMenu();
-      setMenuItems(items.sort((a,b) => a.order - b.order));
-      setIsLoading(false);
+      try {
+        const items = await DatabaseService.getMenu();
+        setMenuItems(items.sort((a,b) => a.order - b.order));
+      } catch (e) {
+        console.error("Lỗi tải menu:", e);
+      } finally {
+        setIsLoading(false);
+      }
   };
 
   const systemPaths = [
@@ -41,10 +47,17 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
   ];
 
   const handleSaveAll = async () => {
-    await DatabaseService.saveMenu(menuItems);
-    await loadMenu(); // Reload real IDs
-    refreshData(false); // Update App state
-    alert("Đã lưu cấu hình Menu và cập nhật ra trang chủ!");
+    setIsSaving(true);
+    try {
+        await DatabaseService.saveMenu(menuItems);
+        await loadMenu(); // Reload để lấy ID thật từ DB
+        refreshData(false);
+        alert("Đã lưu cấu hình Menu thành công!");
+    } catch (e) {
+        alert("Lỗi khi lưu menu. Vui lòng thử lại.");
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -55,28 +68,39 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
 
      const maxOrder = menuItems.length > 0 ? Math.max(...menuItems.map(i => i.order)) : 0;
      const newItem: MenuItem = {
-        id: `menu_${Date.now()}`,
+        id: `menu_${Date.now()}`, // ID tạm thời
         label: newLabel,
         path: path,
         order: maxOrder + 1
      };
 
      const updatedList = [...menuItems, newItem];
-     setMenuItems(updatedList); // Optimistic UI update
+     setMenuItems(updatedList);
      
-     await DatabaseService.saveMenu(updatedList);
-     await loadMenu(); // Get real IDs
-     refreshData(false);
-
-     setNewLabel('');
-     setNewExternalUrl('');
+     setIsSaving(true);
+     try {
+         await DatabaseService.saveMenu(updatedList);
+         await loadMenu(); // Tải lại để thay ID tạm thời bằng ID thật từ UUID
+         refreshData(false);
+         setNewLabel('');
+         setNewExternalUrl('');
+         alert("Đã thêm Menu mới!");
+     } catch (e) {
+         alert("Lỗi khi thêm menu.");
+     } finally {
+         setIsSaving(false);
+     }
   };
 
   const handleDelete = async (id: string) => {
      if (confirm("Bạn có chắc chắn muốn xóa menu này?")) {
-        await DatabaseService.deleteMenu(id);
-        await loadMenu();
-        refreshData(false);
+        try {
+            await DatabaseService.deleteMenu(id);
+            await loadMenu();
+            refreshData(false);
+        } catch (e) {
+            alert("Lỗi khi xóa menu.");
+        }
      }
   };
 
@@ -91,15 +115,12 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
       const newItems = [...menuItems];
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       
-      // Swap items
       [newItems[index], newItems[targetIndex]] = [newItems[targetIndex], newItems[index]];
       
-      // Re-assign sequential order based on new array position
       const reordered = newItems.map((item, idx) => ({ ...item, order: idx + 1 }));
       setMenuItems(reordered);
       
       await DatabaseService.saveMenu(reordered);
-      // No need to full reload here to keep UI snappy, assuming save works
       refreshData(false);
   };
 
@@ -183,8 +204,10 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
 
                   <button 
                      onClick={handleAdd}
-                     className="w-full bg-teal-600 text-white font-bold py-2 rounded hover:bg-teal-700 transition shadow"
+                     disabled={isSaving}
+                     className="w-full bg-teal-600 text-white font-bold py-2 rounded hover:bg-teal-700 transition shadow disabled:opacity-50 flex items-center justify-center"
                   >
+                     {isSaving ? <Loader2 className="animate-spin mr-2" size={16}/> : <Plus className="mr-2" size={16}/>}
                      Thêm và Lưu
                   </button>
                </div>
@@ -196,8 +219,13 @@ export const ManageMenu: React.FC<ManageMenuProps> = ({ refreshData }) => {
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                <div className="flex justify-between items-center mb-4 border-b pb-2">
                   <h3 className="font-bold text-gray-800 flex items-center"><List size={20} className="mr-2 text-teal-600"/> Cấu trúc Menu hiện tại</h3>
-                  <button onClick={handleSaveAll} className="bg-blue-700 text-white px-4 py-2 rounded font-bold flex items-center hover:bg-blue-800 text-sm shadow">
-                     <Save size={16} className="mr-2" /> Cập nhật tên/link
+                  <button 
+                    onClick={handleSaveAll} 
+                    disabled={isSaving}
+                    className="bg-blue-700 text-white px-4 py-2 rounded font-bold flex items-center hover:bg-blue-800 text-sm shadow disabled:opacity-50"
+                  >
+                     {isSaving ? <Loader2 className="animate-spin mr-2" size={16}/> : <Save size={16} className="mr-2" />} 
+                     Cập nhật tên/link
                   </button>
                </div>
 
