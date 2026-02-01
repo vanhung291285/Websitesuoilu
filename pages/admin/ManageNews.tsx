@@ -31,7 +31,16 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const handleEdit = (post: Post) => {
-    setCurrentPost({ ...post, blockIds: post.blockIds || [], attachments: post.attachments || [] });
+    // Luôn đảm bảo blockIds, attachments, content không bị null/undefined
+    // Và đặc biệt là các tùy chọn hiển thị phải được mapping đúng
+    setCurrentPost({ 
+      ...post, 
+      content: post.content || '', 
+      blockIds: post.blockIds || [], 
+      attachments: post.attachments || [],
+      isFeatured: !!post.isFeatured,
+      showOnHome: !!post.showOnHome
+    });
     setTagsInput(post.tags ? post.tags.join(', ') : '');
     setIsEditing(true);
   };
@@ -248,7 +257,9 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
             ...currentPost,
             tags: tags,
             slug: currentPost.slug || 'no-slug',
-            attachments: currentPost.attachments || []
+            attachments: currentPost.attachments || [],
+            isFeatured: !!currentPost.isFeatured,
+            showOnHome: !!currentPost.showOnHome
         } as Post);
         
         refreshData();
@@ -310,7 +321,7 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                         <input 
                           type="text" 
                           className="w-full border border-gray-300 p-2 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white text-gray-900"
-                          value={currentPost.title}
+                          value={currentPost.title || ''}
                           onChange={e => setCurrentPost({...currentPost, title: e.target.value})}
                           onBlur={generateSlug}
                         />
@@ -323,7 +334,7 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                         <input 
                             type="text" 
                             className="flex-1 border border-gray-300 p-2 rounded bg-gray-50 text-gray-600 outline-none"
-                            value={currentPost.slug}
+                            value={currentPost.slug || ''}
                             readOnly
                         />
                         <button onClick={generateSlug} className="p-2 border border-gray-300 rounded hover:bg-gray-100" title="Tạo lại slug"><RotateCcw size={16}/></button>
@@ -336,7 +347,7 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                         <input 
                             type="text" 
                             className="flex-1 border border-gray-300 p-2 rounded bg-white text-gray-900 outline-none"
-                            value={currentPost.thumbnail}
+                            value={currentPost.thumbnail || ''}
                             onChange={e => setCurrentPost({...currentPost, thumbnail: e.target.value})}
                             placeholder="https://..."
                         />
@@ -352,7 +363,7 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                       <textarea 
                         rows={3} 
                         className="w-full border border-gray-300 p-3 rounded bg-white text-gray-900 focus:ring-1 focus:ring-blue-500 outline-none"
-                        value={currentPost.summary}
+                        value={currentPost.summary || ''}
                         onChange={e => setCurrentPost({...currentPost, summary: e.target.value})}
                       ></textarea>
                   </div>
@@ -371,7 +382,7 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                          ref={editorRef} 
                          rows={20} 
                          className="w-full p-4 bg-white text-gray-900 focus:outline-none font-sans"
-                         value={currentPost.content}
+                         value={currentPost.content || ''}
                          onChange={e => setCurrentPost({...currentPost, content: e.target.value})}
                      />
                   </div>
@@ -440,11 +451,11 @@ export const ManageNews: React.FC<ManageNewsProps> = ({ posts, categories, refre
                   <h4 className="font-bold text-gray-800 mb-3 text-xs uppercase border-b pb-2">Tùy chọn hiển thị:</h4>
                   <div className="space-y-2 text-sm">
                      <label className="flex gap-2 items-center cursor-pointer">
-                        <input type="checkbox" checked={currentPost.isFeatured} onChange={e => setCurrentPost({...currentPost, isFeatured: e.target.checked})} /> 
+                        <input type="checkbox" checked={!!currentPost.isFeatured} onChange={e => setCurrentPost({...currentPost, isFeatured: e.target.checked})} /> 
                         Tin nổi bật
                      </label>
                      <label className="flex gap-2 items-center cursor-pointer">
-                        <input type="checkbox" checked={currentPost.showOnHome} onChange={e => setCurrentPost({...currentPost, showOnHome: e.target.checked})} /> 
+                        <input type="checkbox" checked={!!currentPost.showOnHome} onChange={e => setCurrentPost({...currentPost, showOnHome: e.target.checked})} /> 
                         Hiện ở trang chủ
                      </label>
                   </div>

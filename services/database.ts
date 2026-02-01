@@ -4,14 +4,14 @@ import { Post, SchoolConfig, SchoolDocument, GalleryImage, GalleryAlbum, User, U
 
 /**
  * CACHE CONFIGURATION
- * Sử dụng LocalStorage để lưu trữ tạm thời các dữ liệu ít thay đổi.
+ * Đổi version (v3) để làm mới toàn bộ dữ liệu, đảm bảo mapping đúng các trường Boolean
  */
 const CACHE_KEYS = {
-  CONFIG: 'school_config_v1',
-  MENU: 'menu_items_v1',
-  POSTS_HOME: 'posts_home_v1',
-  STAFF: 'staff_list_v1',
-  DOC_CATS: 'doc_categories_v1'
+  CONFIG: 'school_config_v3',
+  MENU: 'menu_items_v3',
+  POSTS_HOME: 'posts_home_v3',
+  STAFF: 'staff_list_v3',
+  DOC_CATS: 'doc_categories_v3'
 };
 
 const DEFAULT_CONFIG: SchoolConfig = {
@@ -44,10 +44,8 @@ const DEFAULT_CONFIG: SchoolConfig = {
   ]
 };
 
-// Helper để kiểm tra xem một ID có phải là UUID thật (từ DB) hay ID tạm thời (từ Client)
 const isRealId = (id?: string) => {
     if (!id) return false;
-    // UUID có độ dài 36 ký tự. ID tạm thời thường có dạng "prefix_timestamp"
     return id.length > 20 && !id.includes('_');
 };
 
@@ -92,26 +90,38 @@ export const DatabaseService = {
 
   getConfig: async (): Promise<SchoolConfig> => {
     const cached = getCache(CACHE_KEYS.CONFIG);
-    const fetchPromise = supabase.from('school_config').select('*').limit(1).single()
-      .then(({ data, error }) => {
-        if (data && !error) {
-          const config = {
-             name: data.name, slogan: data.slogan, logoUrl: data.logo_url, faviconUrl: data.favicon_url,
-             bannerUrl: data.banner_url, principalName: data.principal_name, address: data.address,
-             phone: data.phone, email: data.email, hotline: data.hotline, mapUrl: data.map_url,
-             facebook: data.facebook, youtube: data.youtube, zalo: data.zalo, website: data.website,
-             showWelcomeBanner: data.show_welcome_banner, homeNewsCount: data.home_news_count,
-             homeShowProgram: data.home_show_program, primaryColor: data.primary_color,
-             titleColor: data.title_color, titleShadowColor: data.title_shadow_color,
-             metaTitle: data.meta_title, metaDescription: data.meta_description,
-             footerLinks: data.footer_links || DEFAULT_CONFIG.footerLinks
-          } as SchoolConfig;
-          setCache(CACHE_KEYS.CONFIG, config);
-          return config;
-        }
-        return cached || DEFAULT_CONFIG;
-      });
-    return cached || fetchPromise;
+    const { data, error } = await supabase.from('school_config').select('*').limit(1).single();
+    if (data && !error) {
+      const config: SchoolConfig = {
+          name: data.name,
+          slogan: data.slogan,
+          logoUrl: data.logo_url,
+          faviconUrl: data.favicon_url,
+          bannerUrl: data.banner_url,
+          principalName: data.principal_name,
+          address: data.address,
+          phone: data.phone,
+          email: data.email,
+          hotline: data.hotline,
+          mapUrl: data.map_url,
+          facebook: data.facebook,
+          youtube: data.youtube,
+          zalo: data.zalo,
+          website: data.website,
+          showWelcomeBanner: data.show_welcome_banner,
+          homeNewsCount: data.home_news_count,
+          homeShowProgram: data.home_show_program,
+          primaryColor: data.primary_color,
+          titleColor: data.title_color,
+          titleShadowColor: data.title_shadow_color,
+          metaTitle: data.meta_title,
+          metaDescription: data.meta_description,
+          footerLinks: data.footer_links || DEFAULT_CONFIG.footerLinks
+      };
+      setCache(CACHE_KEYS.CONFIG, config);
+      return config;
+    }
+    return cached || DEFAULT_CONFIG;
   },
 
   saveConfig: async (config: SchoolConfig) => {
@@ -135,26 +145,56 @@ export const DatabaseService = {
     setCache(CACHE_KEYS.CONFIG, config);
   },
 
-  getPosts: async (limitCount: number = 20): Promise<Post[]> => {
-    const cached = getCache(CACHE_KEYS.POSTS_HOME);
-    const fetchPromise = supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount)
-      .then(({ data, error }) => {
-          if (error) throw error;
-          const posts = (data || []).map((p: any) => ({ 
-            ...p, 
-            imageCaption: p.image_caption,
-            blockIds: p.block_ids || [],
-            tags: p.tags || [], 
-            attachments: p.attachments || [],
-          })) as Post[];
-          setCache(CACHE_KEYS.POSTS_HOME, posts);
-          return posts;
-      });
-    return cached || fetchPromise;
+  getPosts: async (limitCount: number = 50): Promise<Post[]> => {
+    const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount);
+    if (error) throw error;
+    
+    const posts = (data || []).map((p: any) => ({ 
+      ...p, 
+      imageCaption: p.image_caption,
+      blockIds: p.block_ids || [],
+      tags: p.tags || [], 
+      attachments: p.attachments || [],
+      isFeatured: !!p.is_featured,      // Explicit mapping for boolean
+      showOnHome: !!p.show_on_home      // Explicit mapping for boolean
+    })) as Post[];
+    
+    setCache(CACHE_KEYS.POSTS_HOME, posts);
+    return posts;
+  },
+
+  getPostBySlug: async (slug: string): Promise<Post | null> => {
+    const { data, error } = await supabase.from('posts').select('*').eq('slug', slug).single();
+    if (error || !data) return null;
+    return {
+      ...data,
+      imageCaption: data.image_caption,
+      blockIds: data.block_ids || [],
+      tags: data.tags || [],
+      attachments: data.attachments || [],
+      isFeatured: !!data.is_featured,   // Explicit mapping for boolean
+      showOnHome: !!data.show_on_home   // Explicit mapping for boolean
+    } as Post;
   },
 
   savePost: async (post: Post) => {
-    const dbPost = { title: post.title, slug: post.slug, summary: post.summary, content: post.content, thumbnail: post.thumbnail, image_caption: post.imageCaption, author: post.author, date: post.date, category: post.category, status: post.status, is_featured: post.isFeatured, show_on_home: post.showOnHome, tags: post.tags, attachments: post.attachments, block_ids: post.blockIds };
+    const dbPost = { 
+        title: post.title, 
+        slug: post.slug, 
+        summary: post.summary, 
+        content: post.content, 
+        thumbnail: post.thumbnail, 
+        image_caption: post.imageCaption, 
+        author: post.author, 
+        date: post.date, 
+        category: post.category, 
+        status: post.status, 
+        is_featured: post.isFeatured,   // App (isFeatured) -> DB (is_featured)
+        show_on_home: post.showOnHome,  // App (showOnHome) -> DB (show_on_home)
+        tags: post.tags, 
+        attachments: post.attachments, 
+        block_ids: post.blockIds 
+    };
     if (isRealId(post.id)) await supabase.from('posts').update(dbPost).eq('id', post.id);
     else await supabase.from('posts').insert(dbPost);
     localStorage.removeItem(CACHE_KEYS.POSTS_HOME);
@@ -166,14 +206,10 @@ export const DatabaseService = {
   },
 
   getStaff: async (): Promise<StaffMember[]> => {
-    const cached = getCache(CACHE_KEYS.STAFF);
-    const fetchPromise = supabase.from('staff_members').select('*').order('order_index', { ascending: true })
-      .then(({ data }) => {
-        const staff = (data || []).map((s: any) => ({ id: s.id, fullName: s.full_name, position: s.position, partyDate: s.party_date, email: s.email, avatarUrl: s.avatar_url, order: s.order_index }));
-        setCache(CACHE_KEYS.STAFF, staff);
-        return staff;
-      });
-    return cached || fetchPromise;
+    const { data } = await supabase.from('staff_members').select('*').order('order_index', { ascending: true });
+    const staff = (data || []).map((s: any) => ({ id: s.id, fullName: s.full_name, position: s.position, partyDate: s.party_date, email: s.email, avatarUrl: s.avatar_url, order: s.order_index }));
+    setCache(CACHE_KEYS.STAFF, staff);
+    return staff;
   },
   
   saveStaff: async (staff: StaffMember) => {
@@ -189,7 +225,7 @@ export const DatabaseService = {
   },
 
   getDocuments: async (): Promise<SchoolDocument[]> => {
-    const { data } = await supabase.from('documents').select('id, number, title, date, category_id, download_url').order('created_at', { ascending: false });
+    const { data } = await supabase.from('documents').select('*').order('created_at', { ascending: false });
     return (data || []).map((d: any) => ({ id: d.id, number: d.number, title: d.title, date: d.date, categoryId: d.category_id, downloadUrl: d.download_url }));
   },
 
@@ -202,7 +238,7 @@ export const DatabaseService = {
   deleteDocument: (id: string) => supabase.from('documents').delete().eq('id', id),
 
   getAlbums: async (): Promise<GalleryAlbum[]> => {
-    const { data } = await supabase.from('gallery_albums').select('id, title, description, thumbnail, created_date').order('created_at', { ascending: false });
+    const { data } = await supabase.from('gallery_albums').select('*').order('created_at', { ascending: false });
     return (data || []).map((a: any) => ({ id: a.id, title: a.title, description: a.description, thumbnail: a.thumbnail, createdDate: a.created_date }));
   },
 
@@ -234,14 +270,10 @@ export const DatabaseService = {
   },
 
   getMenu: async (): Promise<MenuItem[]> => {
-      const cached = getCache(CACHE_KEYS.MENU);
-      const fetchPromise = supabase.from('menu_items').select('*').order('order_index', { ascending: true })
-        .then(({ data }) => {
-          const menu = (data || []).map((m: any) => ({ id: m.id, label: m.label, path: m.path, order: m.order_index }));
-          setCache(CACHE_KEYS.MENU, menu);
-          return menu;
-        });
-      return cached || fetchPromise;
+      const { data } = await supabase.from('menu_items').select('*').order('order_index', { ascending: true });
+      const menu = (data || []).map((m: any) => ({ id: m.id, label: m.label, path: m.path, order: m.order_index }));
+      setCache(CACHE_KEYS.MENU, menu);
+      return menu;
   },
 
   saveMenu: async (items: MenuItem[]) => {
@@ -318,7 +350,7 @@ export const DatabaseService = {
   deleteIntroduction: (id: string) => supabase.from('school_introductions').delete().eq('id', id),
 
   getGallery: async (): Promise<GalleryImage[]> => {
-     const { data } = await supabase.from('gallery_images').select('id, url, caption, album_id').order('created_at', { ascending: false });
+     const { data } = await supabase.from('gallery_images').select('*').order('created_at', { ascending: false });
      return (data || []).map((i: any) => ({ id: i.id, url: i.url, caption: i.caption, albumId: i.album_id }));
   },
 
@@ -347,5 +379,5 @@ export const DatabaseService = {
     else await supabase.from('user_profiles').insert(dbUser);
   },
 
-  deleteUser: (id: string) => supabase.from('user_profiles').delete().eq('id', id),
+  deleteUser: async (id: string) => await supabase.from('user_profiles').delete().eq('id', id),
 };
