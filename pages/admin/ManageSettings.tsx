@@ -180,49 +180,100 @@ export const ManageSettings: React.FC = () => {
        <div className="bg-white p-8 rounded-b-lg shadow-sm border border-t-0 border-gray-200">
           
           {activeTab === 'general' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-               <div className="space-y-4">
-                  <div>
-                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Tên trường (Tiêu đề chính)</label>
-                     <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.name} onChange={e => setConfig({...config, name: e.target.value})}/>
-                  </div>
-                  <div>
-                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Khẩu hiệu (Slogan)</label>
-                     <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.slogan} onChange={e => setConfig({...config, slogan: e.target.value})}/>
-                  </div>
-                  <div>
-                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Hiệu trưởng / Người đại diện</label>
-                     <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.principalName} onChange={e => setConfig({...config, principalName: e.target.value})}/>
-                  </div>
-                  <div className="border-t border-gray-100 pt-4 mt-4">
-                      <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Favicon của trang</label>
-                      <div className="flex gap-3">
-                         <input type="text" value={config.faviconUrl || ''} readOnly placeholder="/uploads/favicon..." className="flex-1 border-2 border-gray-100 p-2.5 rounded-xl font-mono text-xs bg-gray-50 outline-none"/>
-                         <label className="bg-white border-2 border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-xs font-black cursor-pointer hover:bg-gray-50 flex items-center shadow-sm uppercase tracking-tighter">
-                            <FolderOpen size={16} className="mr-2 text-yellow-600"/> Chọn file
-                            <input type="file" hidden accept="image/*,.ico" onChange={handleFaviconUpload}/>
-                         </label>
+            <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                   <div className="space-y-4">
+                      <div>
+                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Tên trường (Tiêu đề chính)</label>
+                         <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.name} onChange={e => setConfig({...config, name: e.target.value})}/>
                       </div>
-                  </div>
-               </div>
-               <div className="space-y-4">
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Logo nhà trường</label>
-                  <div className="flex flex-col gap-3">
-                      <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition text-xs" placeholder="Dán URL logo..." value={config.logoUrl} onChange={e => setConfig({...config, logoUrl: e.target.value})}/>
-                      <label className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 hover:bg-blue-50 transition cursor-pointer text-center group">
-                          <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden"/>
-                          <div className="flex flex-col items-center gap-2 text-gray-400 group-hover:text-blue-600">
-                              <Upload size={24} />
-                              <span className="text-xs font-black uppercase">Tải ảnh từ máy</span>
+                      <div>
+                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Khẩu hiệu (Slogan)</label>
+                         <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.slogan} onChange={e => setConfig({...config, slogan: e.target.value})}/>
+                      </div>
+                      <div>
+                         <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Hiệu trưởng / Người đại diện</label>
+                         <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition" value={config.principalName} onChange={e => setConfig({...config, principalName: e.target.value})}/>
+                      </div>
+                      <div className="border-t border-gray-100 pt-4 mt-4">
+                          <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Favicon của trang</label>
+                          <div className="flex gap-3">
+                             <input type="text" value={config.faviconUrl || ''} readOnly placeholder="/uploads/favicon..." className="flex-1 border-2 border-gray-100 p-2.5 rounded-xl font-mono text-xs bg-gray-50 outline-none"/>
+                             <label className="bg-white border-2 border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-xs font-black cursor-pointer hover:bg-gray-50 flex items-center shadow-sm uppercase tracking-tighter">
+                                <FolderOpen size={16} className="mr-2 text-yellow-600"/> Chọn file
+                                <input type="file" hidden accept="image/*,.ico" onChange={handleFaviconUpload}/>
+                             </label>
                           </div>
-                      </label>
-                  </div>
-                  {config.logoUrl && (
-                    <div className="mt-2 bg-white p-3 border-2 border-gray-100 rounded-2xl inline-flex items-center justify-center min-w-[120px] h-[100px] shadow-inner">
-                       <img src={config.logoUrl} alt="Preview" className="max-h-full max-w-full object-contain" />
+                      </div>
+                   </div>
+                   
+                   <div className="space-y-4">
+                      <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Logo nhà trường</label>
+                      <div className="flex flex-col gap-3">
+                          <input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold focus:border-blue-500 outline-none bg-gray-50 focus:bg-white transition text-xs" placeholder="Dán URL logo..." value={config.logoUrl} onChange={e => setConfig({...config, logoUrl: e.target.value})}/>
+                          <label className="border-2 border-dashed border-gray-300 rounded-2xl p-6 bg-gray-50 hover:bg-blue-50 transition cursor-pointer text-center group">
+                              <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden"/>
+                              <div className="flex flex-col items-center gap-2 text-gray-400 group-hover:text-blue-600">
+                                  <Upload size={24} />
+                                  <span className="text-xs font-black uppercase">Tải logo từ máy</span>
+                              </div>
+                          </label>
+                      </div>
+                      {config.logoUrl && (
+                        <div className="mt-2 bg-white p-3 border-2 border-gray-100 rounded-2xl inline-flex items-center justify-center min-w-[120px] h-[100px] shadow-inner">
+                           <img src={config.logoUrl} alt="Logo Preview" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                   </div>
+                </div>
+
+                {/* BANNER UPLOAD SECTION */}
+                <div className="border-t border-gray-100 pt-8 mt-4">
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center">
+                        <ImageIcon size={18} className="mr-2 text-blue-600" /> Banner nhà trường (Ảnh nền Header)
+                    </h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-1 space-y-4">
+                            <p className="text-xs text-gray-500 font-medium leading-relaxed italic">
+                                Banner sẽ hiển thị làm ảnh nền mờ phía sau logo và tên trường ở phần đầu trang. Nên chọn ảnh có kích thước rộng (1920x400px) và độ phân giải tốt.
+                            </p>
+                            <div className="flex flex-col gap-3">
+                                <input 
+                                    type="text" 
+                                    className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold bg-gray-50 focus:bg-white transition text-xs" 
+                                    placeholder="Dán URL banner..." 
+                                    value={config.bannerUrl} 
+                                    onChange={e => setConfig({...config, bannerUrl: e.target.value})}
+                                />
+                                <label className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase cursor-pointer hover:bg-blue-700 flex items-center justify-center shadow-lg transition active:scale-95">
+                                    <Upload size={16} className="mr-2"/> Tải Banner từ máy
+                                    <input type="file" hidden accept="image/*" onChange={handleBannerUpload}/>
+                                </label>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-2">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Xem trước Banner:</label>
+                            <div className="w-full h-40 bg-slate-100 rounded-2xl overflow-hidden border-2 border-gray-200 relative group">
+                                {config.bannerUrl ? (
+                                    <>
+                                        <img src={config.bannerUrl} alt="Banner Preview" className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                            <div className="text-white text-center drop-shadow-lg">
+                                                <h4 className="text-lg font-black uppercase">{config.name}</h4>
+                                                <p className="text-xs font-bold italic opacity-90">{config.slogan}</p>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                                        <ImageIcon size={32} />
+                                        <span className="text-xs font-bold uppercase tracking-widest">Chưa có banner</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                  )}
-               </div>
+                </div>
             </div>
           )}
 
@@ -278,7 +329,6 @@ export const ManageSettings: React.FC = () => {
             </div>
           )}
 
-          {/* Các tab khác giữ nguyên như cũ... */}
           {activeTab === 'home' && (
              <div className="space-y-6 max-w-3xl">
                 <div className="flex items-center justify-between p-5 border-2 border-gray-50 rounded-2xl bg-white hover:bg-gray-50 transition">
@@ -295,7 +345,6 @@ export const ManageSettings: React.FC = () => {
              </div>
           )}
           
-          {/* (Các phần còn lại của ManageSettings.tsx như cũ) */}
           {activeTab === 'contact' && (
              <div className="space-y-6 max-w-3xl">
                 <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Địa chỉ trụ sở</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold bg-gray-50" value={config.address} onChange={e => setConfig({...config, address: e.target.value})}/></div>
@@ -303,6 +352,7 @@ export const ManageSettings: React.FC = () => {
                   <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Điện thoại</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold bg-gray-50" value={config.phone} onChange={e => setConfig({...config, phone: e.target.value})}/></div>
                   <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Hotline</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold bg-gray-50" value={config.hotline || ''} onChange={e => setConfig({...config, hotline: e.target.value})}/></div>
                 </div>
+                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Email trường</label><input type="email" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold bg-gray-50" value={config.email} onChange={e => setConfig({...config, email: e.target.value})}/></div>
              </div>
           )}
 
@@ -323,13 +373,14 @@ export const ManageSettings: React.FC = () => {
              <div className="space-y-4 max-w-2xl">
                 <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Facebook Fanpage</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" value={config.facebook} onChange={e => setConfig({...config, facebook: e.target.value})}/></div>
                 <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Youtube Channel</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" value={config.youtube} onChange={e => setConfig({...config, youtube: e.target.value})}/></div>
+                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Số điện thoại Zalo</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" value={config.zalo || ''} onChange={e => setConfig({...config, zalo: e.target.value})}/></div>
              </div>
           )}
 
           {activeTab === 'seo' && (
              <div className="space-y-4 max-w-2xl">
-                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Tiêu đề SEO</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" value={config.metaTitle} onChange={e => setConfig({...config, metaTitle: e.target.value})}/></div>
-                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Mô tả SEO</label><textarea className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" rows={4} value={config.metaDescription} onChange={e => setConfig({...config, metaDescription: e.target.value})}/></div>
+                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Tiêu đề SEO (Hiển thị trên Google)</label><input type="text" className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" value={config.metaTitle} onChange={e => setConfig({...config, metaTitle: e.target.value})}/></div>
+                <div><label className="block text-xs font-black text-gray-400 mb-1 uppercase">Mô tả SEO (Mô tả trên Google)</label><textarea className="w-full border-2 border-gray-100 p-2.5 rounded-xl font-bold" rows={4} value={config.metaDescription} onChange={e => setConfig({...config, metaDescription: e.target.value})}/></div>
              </div>
           )}
        </div>
