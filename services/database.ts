@@ -1,17 +1,16 @@
-
 import { supabase } from './supabaseClient';
 import { Post, SchoolConfig, SchoolDocument, GalleryImage, GalleryAlbum, User, UserRole, MenuItem, DisplayBlock, DocumentCategory, StaffMember, IntroductionArticle, PostCategory, Video } from '../types';
 
 /**
  * CACHE CONFIGURATION
- * Đổi version (v3) để làm mới toàn bộ dữ liệu, đảm bảo mapping đúng các trường Boolean
+ * Sử dụng versioning để tránh xung đột dữ liệu cũ
  */
 const CACHE_KEYS = {
-  CONFIG: 'school_config_v3',
-  MENU: 'menu_items_v3',
-  POSTS_HOME: 'posts_home_v3',
-  STAFF: 'staff_list_v3',
-  DOC_CATS: 'doc_categories_v3'
+  CONFIG: 'school_config_v4',
+  MENU: 'menu_items_v4',
+  POSTS_HOME: 'posts_home_v4',
+  STAFF: 'staff_list_v4',
+  DOC_CATS: 'doc_categories_v4'
 };
 
 const DEFAULT_CONFIG: SchoolConfig = {
@@ -64,7 +63,6 @@ const getCache = (key: string) => {
 };
 
 export const DatabaseService = {
-  // Ghi nhận truy cập và cập nhật trạng thái hoạt động (Heartbeat)
   trackVisit: async () => {
     try {
       let sessionId = sessionStorage.getItem('visitor_session_id');
@@ -72,43 +70,27 @@ export const DatabaseService = {
         sessionId = crypto.randomUUID();
         sessionStorage.setItem('visitor_session_id', sessionId);
       }
-
-      // 1. HEARTBEAT: Luôn cập nhật thời gian hoạt động để tính "Đang online"
       await supabase.from('visitor_logs').upsert({ 
         session_id: sessionId, 
         last_active: new Date().toISOString() 
       }, { onConflict: 'session_id' });
 
-      // 2. NEW VISIT: Chỉ tăng bộ đếm thống kê nếu là lần truy cập đầu tiên trong ngày của trình duyệt này
       const today = new Date().toISOString().split('T')[0];
       const visitKey = 'site_visit_counted_' + today;
-      
       if (!localStorage.getItem(visitKey)) {
-          // Gọi RPC (Stored Procedure) để tăng an toàn và chính xác
           const { error } = await supabase.rpc('increment_visit_counters');
-          if (!error) {
-            localStorage.setItem(visitKey, 'true');
-          }
+          if (!error) localStorage.setItem(visitKey, 'true');
       }
-    } catch (e) {
-      console.warn("TrackVisit Error:", e);
-    }
+    } catch (e) { console.warn("TrackVisit Error:", e); }
   },
 
   getVisitorStats: async () => {
     try {
-      // 1. Lấy số liệu thống kê (Tổng, Hôm nay, Tháng)
       const { data: counters } = await supabase.from('site_counters').select('*');
-      
-      // 2. Tính số người đang Online (Hoạt động trong 5 phút gần nhất)
       const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { count: onlineCount } = await supabase.from('visitor_logs')
-        .select('*', { count: 'exact', head: true })
-        .gt('last_active', fiveMinsAgo);
+      const { count: onlineCount } = await supabase.from('visitor_logs').select('*', { count: 'exact', head: true }).gt('last_active', fiveMinsAgo);
 
-      // 3. Mapping dữ liệu
       const stats = { total: 0, today: 0, month: 0, online: 1 };
-      
       if (counters) {
         counters.forEach((c: any) => { 
            if (c.key === 'total_visits') stats.total = Number(c.value);
@@ -116,49 +98,31 @@ export const DatabaseService = {
            if (c.key === 'month_visits') stats.month = Number(c.value);
         });
       }
-      
-      // Đảm bảo online ít nhất là 1 (chính là người đang xem)
       stats.online = Math.max(1, onlineCount || 1);
-      
       return stats;
-    } catch (e) { 
-      return { total: 0, today: 0, month: 0, online: 1 }; 
-    }
+    } catch (e) { return { total: 0, today: 0, month: 0, online: 1 }; }
   },
 
   getConfig: async (): Promise<SchoolConfig> => {
     const cached = getCache(CACHE_KEYS.CONFIG);
-    const { data, error } = await supabase.from('school_config').select('*').limit(1).single();
-    if (data && !error) {
-      const config: SchoolConfig = {
-          name: data.name,
-          slogan: data.slogan,
-          logoUrl: data.logo_url,
-          faviconUrl: data.favicon_url,
-          bannerUrl: data.banner_url,
-          principalName: data.principal_name,
-          address: data.address,
-          phone: data.phone,
-          email: data.email,
-          hotline: data.hotline,
-          mapUrl: data.map_url,
-          facebook: data.facebook,
-          youtube: data.youtube,
-          zalo: data.zalo,
-          website: data.website,
-          showWelcomeBanner: data.show_welcome_banner,
-          homeNewsCount: data.home_news_count,
-          homeShowProgram: data.home_show_program,
-          primaryColor: data.primary_color,
-          titleColor: data.title_color,
-          titleShadowColor: data.title_shadow_color,
-          metaTitle: data.meta_title,
-          metaDescription: data.meta_description,
-          footerLinks: data.footer_links || DEFAULT_CONFIG.footerLinks
-      };
-      setCache(CACHE_KEYS.CONFIG, config);
-      return config;
-    }
+    try {
+      const { data, error } = await supabase.from('school_config').select('*').limit(1).single();
+      if (data && !error) {
+        const config: SchoolConfig = {
+            name: data.name, slogan: data.slogan, logoUrl: data.logo_url, faviconUrl: data.favicon_url,
+            bannerUrl: data.banner_url, principalName: data.principal_name, address: data.address,
+            phone: data.phone, email: data.email, hotline: data.hotline, mapUrl: data.map_url,
+            facebook: data.facebook, youtube: data.youtube, zalo: data.zalo, website: data.website,
+            showWelcomeBanner: data.show_welcome_banner, homeNewsCount: data.home_news_count,
+            homeShowProgram: data.home_show_program, primaryColor: data.primary_color,
+            titleColor: data.title_color, titleShadowColor: data.title_shadow_color,
+            metaTitle: data.meta_title, metaDescription: data.meta_description,
+            footerLinks: data.footer_links || DEFAULT_CONFIG.footerLinks
+        };
+        setCache(CACHE_KEYS.CONFIG, config);
+        return config;
+      }
+    } catch (e) {}
     return cached || DEFAULT_CONFIG;
   },
 
@@ -184,21 +148,38 @@ export const DatabaseService = {
   },
 
   getPosts: async (limitCount: number = 50): Promise<Post[]> => {
-    const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount);
-    if (error) throw error;
-    
-    const posts = (data || []).map((p: any) => ({ 
-      ...p, 
-      imageCaption: p.image_caption,
-      blockIds: p.block_ids || [],
-      tags: p.tags || [], 
-      attachments: p.attachments || [],
-      isFeatured: !!p.is_featured,
-      showOnHome: !!p.show_on_home
-    })) as Post[];
-    
-    setCache(CACHE_KEYS.POSTS_HOME, posts);
-    return posts;
+    const cachedPosts = getCache(CACHE_KEYS.POSTS_HOME);
+    try {
+      const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount);
+      
+      if (error) {
+          console.error("Supabase error fetching posts:", error);
+          return cachedPosts || [];
+      }
+      
+      if (data) {
+          const posts = data.map((p: any) => ({ 
+            ...p, 
+            imageCaption: p.image_caption,
+            blockIds: p.block_ids || [],
+            tags: p.tags || [], 
+            attachments: p.attachments || [],
+            isFeatured: !!(p.is_featured ?? false),
+            showOnHome: !!(p.show_on_home ?? true),
+            views: p.views || 0,
+            date: p.date || new Date(p.created_at || Date.now()).toISOString().split('T')[0]
+          })) as Post[];
+          
+          // Chỉ lưu cache khi có dữ liệu thật sự
+          if (posts.length > 0) {
+              setCache(CACHE_KEYS.POSTS_HOME, posts);
+          }
+          return posts;
+      }
+    } catch (e) {
+      console.error("Network error fetching posts:", e);
+    }
+    return cachedPosts || [];
   },
 
   getPostBySlug: async (slug: string): Promise<Post | null> => {
@@ -244,14 +225,18 @@ export const DatabaseService = {
   },
 
   getStaff: async (): Promise<StaffMember[]> => {
-    const { data } = await supabase.from('staff_members').select('*').order('order_index', { ascending: true });
-    const staff = (data || []).map((s: any) => ({ id: s.id, fullName: s.full_name, position: s.position, partyDate: s.party_date, email: s.email, avatarUrl: s.avatar_url, order: s.order_index }));
-    setCache(CACHE_KEYS.STAFF, staff);
-    return staff;
+    try {
+        const { data } = await supabase.from('staff_members').select('*').order('order_index', { ascending: true });
+        const staff = (data || []).map((s: any) => ({ id: s.id, fullName: s.full_name, position: s.position, partyDate: s.party_date, email: s.email, avatarUrl: s.avatar_url, order: s.order_index }));
+        if (staff.length > 0) setCache(CACHE_KEYS.STAFF, staff);
+        return staff;
+    } catch(e) {
+        return getCache(CACHE_KEYS.STAFF) || [];
+    }
   },
   
   saveStaff: async (staff: StaffMember) => {
-    const dbStaff = { full_name: staff.fullName, position: staff.position, party_date: staff.partyDate || null, email: staff.email, avatar_url: staff.avatarUrl, order_index: staff.order };
+    const dbStaff = { full_name: staff.fullName, position: staff.position, party_date: staff.partyDate || null, email: staff.email, avatar_url: staff.avatar_url, order_index: staff.order };
     if (isRealId(staff.id)) await supabase.from('staff_members').update(dbStaff).eq('id', staff.id);
     else await supabase.from('staff_members').insert(dbStaff);
     localStorage.removeItem(CACHE_KEYS.STAFF);
@@ -308,10 +293,14 @@ export const DatabaseService = {
   },
 
   getMenu: async (): Promise<MenuItem[]> => {
-      const { data } = await supabase.from('menu_items').select('*').order('order_index', { ascending: true });
-      const menu = (data || []).map((m: any) => ({ id: m.id, label: m.label, path: m.path, order: m.order_index }));
-      setCache(CACHE_KEYS.MENU, menu);
-      return menu;
+      try {
+          const { data } = await supabase.from('menu_items').select('*').order('order_index', { ascending: true });
+          const menu = (data || []).map((m: any) => ({ id: m.id, label: m.label, path: m.path, order: m.order_index }));
+          if (menu.length > 0) setCache(CACHE_KEYS.MENU, menu);
+          return menu;
+      } catch(e) {
+          return getCache(CACHE_KEYS.MENU) || [];
+      }
   },
 
   saveMenu: async (items: MenuItem[]) => {
@@ -355,11 +344,14 @@ export const DatabaseService = {
     else await supabase.from('document_categories').insert(dbCat);
   },
 
-  deleteDocCategory: (id: string) => supabase.from('document_categories').delete().eq('id', id),
-
+  // Added missing method to handle reordering of document categories
   saveDocCategoriesOrder: async (categories: DocumentCategory[]) => {
-      for (const c of categories) await supabase.from('document_categories').update({ order_index: c.order }).eq('id', c.id);
+    for (const cat of categories) {
+      await supabase.from('document_categories').update({ order_index: cat.order }).eq('id', cat.id);
+    }
   },
+
+  deleteDocCategory: (id: string) => supabase.from('document_categories').delete().eq('id', id),
 
   getVideos: async (): Promise<Video[]> => {
     const { data } = await supabase.from('videos').select('*').order('order_index', { ascending: true });
@@ -402,13 +394,7 @@ export const DatabaseService = {
 
   getUsers: async (): Promise<User[]> => {
     const { data } = await supabase.from('user_profiles').select('*');
-    return (data || []).map((u: any) => ({
-      id: u.id,
-      username: u.username,
-      fullName: u.full_name,
-      role: u.role as UserRole,
-      email: u.username + '@school.edu.vn'
-    }));
+    return (data || []).map((u: any) => ({ id: u.id, username: u.username, fullName: u.full_name, role: u.role as UserRole, email: u.username + '@school.edu.vn' }));
   },
 
   saveUser: async (user: User) => {
