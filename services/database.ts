@@ -64,28 +64,66 @@ const getCache = (key: string) => {
 };
 
 export const DatabaseService = {
+  // Ghi nhận truy cập và cập nhật trạng thái hoạt động (Heartbeat)
   trackVisit: async () => {
     try {
-      const sessionId = sessionStorage.getItem('visitor_session_id') || crypto.randomUUID();
-      sessionStorage.setItem('visitor_session_id', sessionId);
-      supabase.from('visitor_logs').upsert({ session_id: sessionId, last_active: new Date().toISOString() }, { onConflict: 'session_id' }).then();
-      const today = new Date().toISOString().split('T')[0];
-      const visitKey = 'site_visit_' + today;
-      if (!localStorage.getItem(visitKey)) {
-          supabase.rpc('increment_visit_counters').then(() => { localStorage.setItem(visitKey, 'true'); });
+      let sessionId = sessionStorage.getItem('visitor_session_id');
+      if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        sessionStorage.setItem('visitor_session_id', sessionId);
       }
-    } catch (e) {}
+
+      // 1. HEARTBEAT: Luôn cập nhật thời gian hoạt động để tính "Đang online"
+      await supabase.from('visitor_logs').upsert({ 
+        session_id: sessionId, 
+        last_active: new Date().toISOString() 
+      }, { onConflict: 'session_id' });
+
+      // 2. NEW VISIT: Chỉ tăng bộ đếm thống kê nếu là lần truy cập đầu tiên trong ngày của trình duyệt này
+      const today = new Date().toISOString().split('T')[0];
+      const visitKey = 'site_visit_counted_' + today;
+      
+      if (!localStorage.getItem(visitKey)) {
+          // Gọi RPC (Stored Procedure) để tăng an toàn và chính xác
+          const { error } = await supabase.rpc('increment_visit_counters');
+          if (!error) {
+            localStorage.setItem(visitKey, 'true');
+          }
+      }
+    } catch (e) {
+      console.warn("TrackVisit Error:", e);
+    }
   },
 
   getVisitorStats: async () => {
     try {
+      // 1. Lấy số liệu thống kê (Tổng, Hôm nay, Tháng)
       const { data: counters } = await supabase.from('site_counters').select('*');
-      const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { count: onlineCount } = await supabase.from('visitor_logs').select('*', { count: 'exact', head: true }).gt('last_active', tenMinsAgo);
-      const statsMap: any = {};
-      counters?.forEach(c => { statsMap[c.key] = parseInt(c.value); });
-      return { total: statsMap['total_visits'] || 0, today: statsMap['today_visits'] || 0, month: statsMap['month_visits'] || 0, online: onlineCount || 1 };
-    } catch (e) { return { total: 0, today: 0, month: 0, online: 1 }; }
+      
+      // 2. Tính số người đang Online (Hoạt động trong 5 phút gần nhất)
+      const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { count: onlineCount } = await supabase.from('visitor_logs')
+        .select('*', { count: 'exact', head: true })
+        .gt('last_active', fiveMinsAgo);
+
+      // 3. Mapping dữ liệu
+      const stats = { total: 0, today: 0, month: 0, online: 1 };
+      
+      if (counters) {
+        counters.forEach((c: any) => { 
+           if (c.key === 'total_visits') stats.total = Number(c.value);
+           if (c.key === 'today_visits') stats.today = Number(c.value);
+           if (c.key === 'month_visits') stats.month = Number(c.value);
+        });
+      }
+      
+      // Đảm bảo online ít nhất là 1 (chính là người đang xem)
+      stats.online = Math.max(1, onlineCount || 1);
+      
+      return stats;
+    } catch (e) { 
+      return { total: 0, today: 0, month: 0, online: 1 }; 
+    }
   },
 
   getConfig: async (): Promise<SchoolConfig> => {
@@ -155,8 +193,8 @@ export const DatabaseService = {
       blockIds: p.block_ids || [],
       tags: p.tags || [], 
       attachments: p.attachments || [],
-      isFeatured: !!p.is_featured,      // Explicit mapping for boolean
-      showOnHome: !!p.show_on_home      // Explicit mapping for boolean
+      isFeatured: !!p.is_featured,
+      showOnHome: !!p.show_on_home
     })) as Post[];
     
     setCache(CACHE_KEYS.POSTS_HOME, posts);
@@ -172,8 +210,8 @@ export const DatabaseService = {
       blockIds: data.block_ids || [],
       tags: data.tags || [],
       attachments: data.attachments || [],
-      isFeatured: !!data.is_featured,   // Explicit mapping for boolean
-      showOnHome: !!data.show_on_home   // Explicit mapping for boolean
+      isFeatured: !!data.is_featured,
+      showOnHome: !!data.show_on_home
     } as Post;
   },
 
@@ -189,8 +227,8 @@ export const DatabaseService = {
         date: post.date, 
         category: post.category, 
         status: post.status, 
-        is_featured: post.isFeatured,   // App (isFeatured) -> DB (is_featured)
-        show_on_home: post.showOnHome,  // App (showOnHome) -> DB (show_on_home)
+        is_featured: post.isFeatured,
+        show_on_home: post.showOnHome,
         tags: post.tags, 
         attachments: post.attachments, 
         block_ids: post.blockIds 

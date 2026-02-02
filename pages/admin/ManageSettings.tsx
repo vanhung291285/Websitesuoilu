@@ -357,14 +357,52 @@ export const ManageSettings: React.FC = () => {
           )}
 
           {activeTab === 'display' && (
-             <div className="grid grid-cols-2 gap-6">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-gray-50 p-6 rounded-2xl border-2 border-gray-100">
                     <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Màu chủ đạo (Menu/Header)</label>
-                    <input type="color" value={config.primaryColor || '#1e3a8a'} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="h-14 w-full cursor-pointer rounded-xl border-4 border-white shadow-sm"/>
+                    <div className="flex items-center gap-3">
+                        <input type="color" value={config.primaryColor || '#1e3a8a'} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="h-12 w-12 cursor-pointer rounded-lg border-2 border-white shadow-sm p-0"/>
+                        <input type="text" value={config.primaryColor || '#1e3a8a'} onChange={e => setConfig({...config, primaryColor: e.target.value})} className="flex-1 border border-gray-300 rounded-lg p-2 text-sm font-mono uppercase"/>
+                    </div>
                 </div>
                 <div className="bg-gray-50 p-6 rounded-2xl border-2 border-gray-100">
-                    <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Màu chữ Tiêu đề Trường</label>
-                    <input type="color" value={config.titleColor || '#fbbf24'} onChange={e => setConfig({...config, titleColor: e.target.value})} className="h-14 w-full cursor-pointer rounded-xl border-4 border-white shadow-sm"/>
+                    <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Màu chữ Tên trường</label>
+                    <div className="flex items-center gap-3">
+                        <input type="color" value={config.titleColor || '#fbbf24'} onChange={e => setConfig({...config, titleColor: e.target.value})} className="h-12 w-12 cursor-pointer rounded-lg border-2 border-white shadow-sm p-0"/>
+                        <input type="text" value={config.titleColor || '#fbbf24'} onChange={e => setConfig({...config, titleColor: e.target.value})} className="flex-1 border border-gray-300 rounded-lg p-2 text-sm font-mono uppercase"/>
+                    </div>
+                </div>
+                <div className="bg-gray-50 p-6 rounded-2xl border-2 border-gray-100">
+                    <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Màu bóng chữ (Shadow)</label>
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <input type="color" value={config.titleShadowColor?.startsWith('#') ? config.titleShadowColor : '#000000'} onChange={e => setConfig({...config, titleShadowColor: e.target.value})} className="h-12 w-12 cursor-pointer rounded-lg border-2 border-white shadow-sm p-0"/>
+                        </div>
+                        <input type="text" value={config.titleShadowColor || 'rgba(0,0,0,0.8)'} onChange={e => setConfig({...config, titleShadowColor: e.target.value})} className="flex-1 border border-gray-300 rounded-lg p-2 text-sm font-mono" placeholder="rgba(0,0,0,0.8)"/>
+                    </div>
+                </div>
+                
+                <div className="md:col-span-3 mt-4">
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Xem trước hiển thị:</label>
+                    <div 
+                        className="w-full h-40 rounded-2xl overflow-hidden border-2 border-gray-200 relative flex items-center justify-center bg-gray-100"
+                        style={{ 
+                            backgroundImage: config.bannerUrl ? `url(${config.bannerUrl})` : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                        }}
+                    >
+                        {config.bannerUrl && <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-transparent"></div>}
+                        <h1 
+                          className="text-3xl md:text-4xl font-black uppercase leading-tight tracking-tight relative z-10 text-center px-4"
+                          style={{ 
+                            color: config.titleColor || '#fbbf24',
+                            filter: `drop-shadow(0 2px 4px ${config.titleShadowColor || 'rgba(0,0,0,0.8)'})`
+                          }}
+                        >
+                            {config.name}
+                        </h1>
+                    </div>
                 </div>
              </div>
           )}

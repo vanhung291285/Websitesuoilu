@@ -84,7 +84,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     refreshData();
+    
+    // Khởi tạo track visit lần đầu
     DatabaseService.trackVisit();
+
+    // Heartbeat: Gửi tín hiệu online mỗi 60 giây
+    const heartbeat = setInterval(() => {
+      DatabaseService.trackVisit();
+    }, 60000);
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -114,7 +121,9 @@ const App: React.FC = () => {
 
     handleUrlRouting();
     window.addEventListener('popstate', handleUrlRouting);
+    
     return () => {
+      clearInterval(heartbeat);
       subscription.unsubscribe();
       window.removeEventListener('popstate', handleUrlRouting);
     };

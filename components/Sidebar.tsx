@@ -35,8 +35,11 @@ const StatsBlock: React.FC<{ block: DisplayBlock }> = ({ block }) => {
          setStats(data);
       };
       
+      // Gọi lần đầu
       fetchStats();
-      const statsTimer = setInterval(fetchStats, 20000); // Cập nhật sau mỗi 20s
+      
+      // Tự động cập nhật mỗi 30 giây để số liệu trông "sống động"
+      const statsTimer = setInterval(fetchStats, 30000); 
       return () => clearInterval(statsTimer);
    }, []);
 
