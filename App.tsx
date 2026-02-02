@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -57,8 +56,17 @@ const FALLBACK_CONFIG: SchoolConfig = {
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageRoute>('home');
   const [detailId, setDetailId] = useState<string | undefined>(undefined);
+  const [fullPost, setFullPost] = useState<Post | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   
-  const [posts, setPosts] = useState<Post[]>([]);
+  // Nạp dữ liệu ban đầu từ LocalStorage nếu có (Cơ chế Hydration)
+  const [posts, setPosts] = useState<Post[]>(() => {
+    try {
+      const cached = localStorage.getItem('posts_home_v5');
+      return cached ? JSON.parse(cached).data : [];
+    } catch (e) { return []; }
+  });
+
   const [postCategories, setPostCategories] = useState<PostCategory[]>([]);
   const [introductions, setIntroductions] = useState<IntroductionArticle[]>([]); 
   const [documents, setDocuments] = useState<SchoolDocument[]>([]);
@@ -69,10 +77,16 @@ const App: React.FC = () => {
   const [blocks, setBlocks] = useState<DisplayBlock[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [config, setConfig] = useState<SchoolConfig | null>(null);
+  
+  const [config, setConfig] = useState<SchoolConfig | null>(() => {
+    try {
+      const cached = localStorage.getItem('school_config_v5');
+      return cached ? JSON.parse(cached).data : null;
+    } catch (e) { return null; }
+  });
+
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState(false);
-
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const safePushState = (url: string) => {
@@ -84,7 +98,10 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    refreshData();
+    // Chỉ hiện Loader nếu chưa có cả bài viết lẫn cấu hình trong cache
+    const shouldShowLoader = posts.length === 0 && !config;
+    refreshData(shouldShowLoader);
+    
     DatabaseService.trackVisit();
     const heartbeat = setInterval(() => {
       DatabaseService.trackVisit();
@@ -125,6 +142,27 @@ const App: React.FC = () => {
       window.removeEventListener('popstate', handleUrlRouting);
     };
   }, []);
+
+  // Effect fetch full post content when entering detail page
+  useEffect(() => {
+    if (currentPage === 'news-detail' && detailId) {
+       const postInList = posts.find(p => p.id === detailId);
+       
+       // Nếu trong state đã có content rồi thì không fetch nữa
+       if (postInList && postInList.content) {
+         setFullPost(postInList);
+       } else {
+         // Fetch dữ liệu đầy đủ từ DB
+         setLoadingDetail(true);
+         DatabaseService.getPostById(detailId).then(data => {
+            if (data) setFullPost(data);
+            setLoadingDetail(false);
+         }).catch(() => setLoadingDetail(false));
+       }
+    } else {
+       setFullPost(null);
+    }
+  }, [currentPage, detailId, posts]);
 
   const handleUrlRouting = () => {
     try {
@@ -191,8 +229,13 @@ const App: React.FC = () => {
             DatabaseService.getPostCategories().catch(() => [])
         ]);
 
-        setConfig(fetchedConfig || FALLBACK_CONFIG);
-        setPosts(fetchedPosts || []);
+        if (fetchedConfig) setConfig(fetchedConfig);
+        else if (!config) setConfig(FALLBACK_CONFIG);
+
+        if (fetchedPosts && fetchedPosts.length > 0) {
+            setPosts(fetchedPosts);
+        }
+
         setDocuments(fetchedDocs);
         setDocCategories(fetchedCats);
         setGalleryImages(fetchedGallery);
@@ -204,9 +247,6 @@ const App: React.FC = () => {
         setIntroductions(fetchedIntros.filter(i => i.isVisible).sort((a,b) => a.order - b.order));
         setPostCategories(fetchedPostCats);
 
-        if (!fetchedPosts || fetchedPosts.length === 0) {
-            console.warn("Dữ liệu bài viết trống sau khi tải.");
-        }
     } catch (error) {
         console.error("Failed to load data", error);
         setDataError(true);
@@ -242,7 +282,7 @@ const App: React.FC = () => {
     safePushState(newUrl);
   };
 
-  if (loading || !config) {
+  if (loading && posts.length === 0 && !config) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center space-y-4">
@@ -252,6 +292,8 @@ const App: React.FC = () => {
       </div>
     );
   }
+
+  const activeConfig = config || FALLBACK_CONFIG;
 
   if (currentPage === 'login') {
       return <Login onLoginSuccess={handleLoginSuccess} onNavigate={navigate} />;
@@ -283,8 +325,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 font-sans text-slate-900">
-      <Header config={config} menuItems={menuItems} onNavigate={navigate} activePath={currentPage} />
-      {!currentPage.startsWith('admin-') && <NewsTicker posts={posts} onNavigate={navigate} primaryColor={config.primaryColor} />}
+      <Header config={activeConfig} menuItems={menuItems} onNavigate={navigate} activePath={currentPage} />
+      {!currentPage.startsWith('admin-') && <NewsTicker posts={posts} onNavigate={navigate} primaryColor={activeConfig.primaryColor} />}
 
       <main className="flex-grow w-full">
         {dataError && (
@@ -295,34 +337,38 @@ const App: React.FC = () => {
         )}
         
         {currentPage === 'home' && (
-          <Home posts={posts} postCategories={postCategories} docCategories={docCategories} config={config} gallery={galleryImages} videos={videos} blocks={blocks} introductions={introductions} onNavigate={(p, id) => navigate(p, id)} />
+          <Home posts={posts} postCategories={postCategories} docCategories={docCategories} config={activeConfig} gallery={galleryImages} videos={videos} blocks={blocks} introductions={introductions} onNavigate={(p, id) => navigate(p, id)} />
         )}
-        {currentPage === 'intro' && <Introduction config={config} />}
+        {currentPage === 'intro' && <Introduction config={activeConfig} />}
         {currentPage === 'staff' && <Staff staffList={staffList} />}
         {currentPage === 'documents' && <Documents documents={documents} categories={docCategories} initialCategorySlug="official" />}
         {currentPage === 'resources' && <Documents documents={documents} categories={docCategories} initialCategorySlug="resource" />}
         {currentPage === 'gallery' && <Gallery images={galleryImages} albums={albums} />}
         {currentPage === 'news' && (
-          <div className="container mx-auto px-4 py-10">
+           <div className="container mx-auto px-4 py-10">
             <div className="bg-white p-6 rounded shadow-sm border border-gray-200">
                 <div className="flex items-center mb-8 pb-2 border-b-2 border-blue-900">
                     <h2 className="text-2xl font-bold text-blue-900 uppercase">Tin tức & Sự kiện</h2>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {posts.filter(p => p.status === 'published').map(post => {
-                    const cat = postCategories.find(c => c.slug === post.category);
-                    return (
-                    <div key={post.id} onClick={() => navigate('news-detail', post.id)} className="group cursor-pointer flex flex-col h-full">
-                        <div className="overflow-hidden rounded mb-3 border border-gray-200">
-                            <img src={post.thumbnail} className="h-48 w-full object-cover transform group-hover:scale-105 transition duration-500" alt={post.title}/>
+                {posts.filter(p => p.status === 'published').length === 0 ? (
+                    <div className="p-10 text-center text-gray-500 italic">Đang tải tin tức...</div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {posts.filter(p => p.status === 'published').map(post => {
+                        const cat = postCategories.find(c => c.slug === post.category);
+                        return (
+                        <div key={post.id} onClick={() => navigate('news-detail', post.id)} className="group cursor-pointer flex flex-col h-full">
+                            <div className="overflow-hidden rounded mb-3 border border-gray-200">
+                                <img src={post.thumbnail} className="h-48 w-full object-cover transform group-hover:scale-105 transition duration-500" alt={post.title}/>
+                            </div>
+                            <span className={`text-xs font-bold uppercase mb-1 block text-${cat?.color || 'blue'}-600`}>{cat?.name || 'Tin tức'}</span>
+                            <h3 className="font-bold text-lg mb-2 group-hover:text-blue-700 leading-snug">{post.title}</h3>
+                            <p className="text-gray-700 text-sm line-clamp-2 mb-2 flex-grow">{post.summary}</p>
+                            <div className="text-xs text-gray-400 mt-auto pt-2 border-t border-gray-100">{post.date}</div>
                         </div>
-                        <span className={`text-xs font-bold uppercase mb-1 block text-${cat?.color || 'blue'}-600`}>{cat?.name || 'Tin tức'}</span>
-                        <h3 className="font-bold text-lg mb-2 group-hover:text-blue-700 leading-snug">{post.title}</h3>
-                        <p className="text-gray-700 text-sm line-clamp-2 mb-2 flex-grow">{post.summary}</p>
-                        <div className="text-xs text-gray-400 mt-auto pt-2 border-t border-gray-100">{post.date}</div>
+                    )})}
                     </div>
-                )})}
-                </div>
+                )}
             </div>
           </div>
         )}
@@ -331,8 +377,19 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-8">
                     {(() => {
-                      const post = posts.find(p => p.id === detailId);
-                      if (!post) return <div className="p-10 text-center bg-white rounded shadow">Bài viết không tồn tại hoặc đã bị gỡ.</div>;
+                      const post = fullPost || posts.find(p => p.id === detailId);
+                      
+                      if (loadingDetail) {
+                          return (
+                            <div className="bg-white p-12 rounded-lg shadow-sm border border-gray-200 text-center">
+                                <Loader2 size={32} className="animate-spin text-blue-600 mx-auto mb-4" />
+                                <p className="text-gray-500 font-bold uppercase text-xs">Đang tải nội dung chi tiết...</p>
+                            </div>
+                          );
+                      }
+
+                      if (!post) return <div className="p-10 text-center bg-white rounded shadow">Bài viết không tồn tại.</div>;
+                      
                       const cat = postCategories.find(c => c.slug === post.category);
                       return (
                         <article className="bg-white p-6 md:p-8 rounded-lg shadow-sm border border-gray-200">
@@ -344,7 +401,11 @@ const App: React.FC = () => {
                               </div>
                             </div>
                             <div className="font-semibold text-lg text-gray-800 mb-6 italic bg-gray-50 p-4 border-l-4 border-blue-500 rounded-r">{post.summary}</div>
-                            <div className="prose prose-blue prose-lg max-w-none text-gray-900 leading-relaxed text-justify news-content-area" dangerouslySetInnerHTML={{ __html: post.content }} />
+                            {post.content ? (
+                                <div className="prose prose-blue prose-lg max-w-none text-gray-900 leading-relaxed text-justify news-content-area" dangerouslySetInnerHTML={{ __html: post.content }} />
+                            ) : (
+                                <div className="text-gray-400 italic">Dữ liệu nội dung đang được tải...</div>
+                            )}
                         </article>
                       );
                     })()}
@@ -356,8 +417,8 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
-      {config && <Footer config={config} />}
-      {config && !currentPage.startsWith('admin-') && <FloatingContact config={config} />}
+      <Footer config={activeConfig} />
+      {!currentPage.startsWith('admin-') && <FloatingContact config={activeConfig} />}
     </div>
   );
 };

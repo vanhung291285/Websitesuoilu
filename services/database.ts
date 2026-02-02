@@ -3,14 +3,13 @@ import { Post, SchoolConfig, SchoolDocument, GalleryImage, GalleryAlbum, User, U
 
 /**
  * CACHE CONFIGURATION
- * Sử dụng versioning để tránh xung đột dữ liệu cũ
  */
 const CACHE_KEYS = {
-  CONFIG: 'school_config_v4',
-  MENU: 'menu_items_v4',
-  POSTS_HOME: 'posts_home_v4',
-  STAFF: 'staff_list_v4',
-  DOC_CATS: 'doc_categories_v4'
+  CONFIG: 'school_config_v5',
+  MENU: 'menu_items_v5',
+  POSTS_HOME: 'posts_home_v5',
+  STAFF: 'staff_list_v5',
+  DOC_CATS: 'doc_categories_v5'
 };
 
 const DEFAULT_CONFIG: SchoolConfig = {
@@ -43,6 +42,40 @@ const DEFAULT_CONFIG: SchoolConfig = {
   ]
 };
 
+// Helper: Chờ đợi (để retry)
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * fetchWithRetry: Thực hiện fetch với cơ chế retry thông minh
+ * Xử lý đặc biệt cho lỗi 'statement timeout' của Postgres
+ */
+async function fetchWithRetry<T>(fetchFn: () => Promise<{data: T | null, error: any}>, retries = 3, delay = 1500): Promise<T | null> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const { data, error } = await fetchFn();
+            
+            if (error) {
+                const errorMsg = error.message?.toLowerCase() || '';
+                // Nếu là lỗi timeout từ server Postgres hoặc lỗi mạng
+                if (errorMsg.includes('timeout') || errorMsg.includes('cancel') || error.code === 'PGRST116' || !window.navigator.onLine) {
+                    console.warn(`[Supabase] Lần thử ${i + 1} thất bại (${errorMsg}), đang thử lại sau ${delay * (i + 1)}ms...`);
+                    await sleep(delay * (i + 1));
+                    continue;
+                }
+                throw error; // Các lỗi RLS hoặc lỗi logic thì báo ngay
+            }
+            return data;
+        } catch (e: any) {
+            if (i === retries - 1) {
+                console.error("[Supabase] Đã thử lại nhiều lần nhưng vẫn lỗi:", e);
+                throw e;
+            }
+            await sleep(delay * (i + 1));
+        }
+    }
+    return null;
+}
+
 const isRealId = (id?: string) => {
     if (!id) return false;
     return id.length > 20 && !id.includes('_');
@@ -50,6 +83,10 @@ const isRealId = (id?: string) => {
 
 const setCache = (key: string, data: any) => {
   try {
+    if (Array.isArray(data) && data.length === 0) {
+        const existing = localStorage.getItem(key);
+        if (existing) return; 
+    }
     localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
   } catch (e) {}
 };
@@ -63,6 +100,8 @@ const getCache = (key: string) => {
 };
 
 export const DatabaseService = {
+  CACHE_KEYS,
+
   trackVisit: async () => {
     try {
       let sessionId = sessionStorage.getItem('visitor_session_id');
@@ -81,7 +120,7 @@ export const DatabaseService = {
           const { error } = await supabase.rpc('increment_visit_counters');
           if (!error) localStorage.setItem(visitKey, 'true');
       }
-    } catch (e) { console.warn("TrackVisit Error:", e); }
+    } catch (e) {}
   },
 
   getVisitorStats: async () => {
@@ -106,8 +145,8 @@ export const DatabaseService = {
   getConfig: async (): Promise<SchoolConfig> => {
     const cached = getCache(CACHE_KEYS.CONFIG);
     try {
-      const { data, error } = await supabase.from('school_config').select('*').limit(1).single();
-      if (data && !error) {
+      const data = await fetchWithRetry<any>(() => supabase.from('school_config').select('*').limit(1).single());
+      if (data) {
         const config: SchoolConfig = {
             name: data.name, slogan: data.slogan, logoUrl: data.logo_url, faviconUrl: data.favicon_url,
             bannerUrl: data.banner_url, principalName: data.principal_name, address: data.address,
@@ -122,7 +161,9 @@ export const DatabaseService = {
         setCache(CACHE_KEYS.CONFIG, config);
         return config;
       }
-    } catch (e) {}
+    } catch (e) {
+        console.error("Lỗi getConfig:", e);
+    }
     return cached || DEFAULT_CONFIG;
   },
 
@@ -147,20 +188,24 @@ export const DatabaseService = {
     setCache(CACHE_KEYS.CONFIG, config);
   },
 
-  getPosts: async (limitCount: number = 50): Promise<Post[]> => {
+  /**
+   * getPosts: Chỉ lấy các cột metadata nhẹ, giới hạn 20 bài để tránh lỗi Statement Timeout.
+   */
+  getPosts: async (limitCount: number = 20): Promise<Post[]> => {
     const cachedPosts = getCache(CACHE_KEYS.POSTS_HOME);
     try {
-      const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(limitCount);
-      
-      if (error) {
-          console.error("Supabase error fetching posts:", error);
-          return cachedPosts || [];
-      }
+      // TUYỆT ĐỐI KHÔNG LẤY CỘT 'content' TRONG DANH SÁCH
+      const data = await fetchWithRetry<any[]>(() => supabase.from('posts')
+        .select('id, title, slug, summary, thumbnail, author, date, category, views, status, is_featured, show_on_home, tags, attachments, block_ids, created_at')
+        .order('created_at', { ascending: false })
+        .limit(limitCount));
       
       if (data) {
+          if (data.length === 0 && cachedPosts && cachedPosts.length > 0) return cachedPosts;
+
           const posts = data.map((p: any) => ({ 
             ...p, 
-            imageCaption: p.image_caption,
+            imageCaption: p.image_caption || '',
             blockIds: p.block_ids || [],
             tags: p.tags || [], 
             attachments: p.attachments || [],
@@ -170,30 +215,45 @@ export const DatabaseService = {
             date: p.date || new Date(p.created_at || Date.now()).toISOString().split('T')[0]
           })) as Post[];
           
-          // Chỉ lưu cache khi có dữ liệu thật sự
-          if (posts.length > 0) {
-              setCache(CACHE_KEYS.POSTS_HOME, posts);
-          }
+          if (posts.length > 0) setCache(CACHE_KEYS.POSTS_HOME, posts);
           return posts;
       }
     } catch (e) {
-      console.error("Network error fetching posts:", e);
+      console.error("Lỗi đồng bộ bài viết:", e);
     }
     return cachedPosts || [];
   },
 
   getPostBySlug: async (slug: string): Promise<Post | null> => {
-    const { data, error } = await supabase.from('posts').select('*').eq('slug', slug).single();
-    if (error || !data) return null;
-    return {
-      ...data,
-      imageCaption: data.image_caption,
-      blockIds: data.block_ids || [],
-      tags: data.tags || [],
-      attachments: data.attachments || [],
-      isFeatured: !!data.is_featured,
-      showOnHome: !!data.show_on_home
-    } as Post;
+    try {
+      const data = await fetchWithRetry<any>(() => supabase.from('posts').select('*').eq('slug', slug).single());
+      if (!data) return null;
+      return {
+        ...data,
+        imageCaption: data.image_caption,
+        blockIds: data.block_ids || [],
+        tags: data.tags || [],
+        attachments: data.attachments || [],
+        isFeatured: !!data.is_featured,
+        showOnHome: !!data.show_on_home
+      } as Post;
+    } catch (e) { return null; }
+  },
+
+  getPostById: async (id: string): Promise<Post | null> => {
+    try {
+      const data = await fetchWithRetry<any>(() => supabase.from('posts').select('*').eq('id', id).single());
+      if (!data) return null;
+      return {
+        ...data,
+        imageCaption: data.image_caption,
+        blockIds: data.block_ids || [],
+        tags: data.tags || [],
+        attachments: data.attachments || [],
+        isFeatured: !!data.is_featured,
+        showOnHome: !!data.show_on_home
+      } as Post;
+    } catch (e) { return null; }
   },
 
   savePost: async (post: Post) => {
@@ -226,7 +286,7 @@ export const DatabaseService = {
 
   getStaff: async (): Promise<StaffMember[]> => {
     try {
-        const { data } = await supabase.from('staff_members').select('*').order('order_index', { ascending: true });
+        const data = await fetchWithRetry<any[]>(() => supabase.from('staff_members').select('*').order('order_index', { ascending: true }));
         const staff = (data || []).map((s: any) => ({ id: s.id, fullName: s.full_name, position: s.position, partyDate: s.party_date, email: s.email, avatarUrl: s.avatar_url, order: s.order_index }));
         if (staff.length > 0) setCache(CACHE_KEYS.STAFF, staff);
         return staff;
@@ -236,7 +296,7 @@ export const DatabaseService = {
   },
   
   saveStaff: async (staff: StaffMember) => {
-    const dbStaff = { full_name: staff.fullName, position: staff.position, party_date: staff.partyDate || null, email: staff.email, avatar_url: staff.avatar_url, order_index: staff.order };
+    const dbStaff = { full_name: staff.fullName, position: staff.position, party_date: staff.partyDate || null, email: staff.email, avatar_url: staff.avatarUrl, order_index: staff.order };
     if (isRealId(staff.id)) await supabase.from('staff_members').update(dbStaff).eq('id', staff.id);
     else await supabase.from('staff_members').insert(dbStaff);
     localStorage.removeItem(CACHE_KEYS.STAFF);
@@ -248,8 +308,10 @@ export const DatabaseService = {
   },
 
   getDocuments: async (): Promise<SchoolDocument[]> => {
-    const { data } = await supabase.from('documents').select('*').order('created_at', { ascending: false });
-    return (data || []).map((d: any) => ({ id: d.id, number: d.number, title: d.title, date: d.date, categoryId: d.category_id, downloadUrl: d.download_url }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('documents').select('*').order('created_at', { ascending: false }));
+      return (data || []).map((d: any) => ({ id: d.id, number: d.number, title: d.title, date: d.date, categoryId: d.category_id, downloadUrl: d.download_url }));
+    } catch(e) { return []; }
   },
 
   saveDocument: async (doc: SchoolDocument) => {
@@ -261,8 +323,10 @@ export const DatabaseService = {
   deleteDocument: (id: string) => supabase.from('documents').delete().eq('id', id),
 
   getAlbums: async (): Promise<GalleryAlbum[]> => {
-    const { data } = await supabase.from('gallery_albums').select('*').order('created_at', { ascending: false });
-    return (data || []).map((a: any) => ({ id: a.id, title: a.title, description: a.description, thumbnail: a.thumbnail, createdDate: a.created_date }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('gallery_albums').select('*').order('created_at', { ascending: false }));
+      return (data || []).map((a: any) => ({ id: a.id, title: a.title, description: a.description, thumbnail: a.thumbnail, createdDate: a.created_date }));
+    } catch(e) { return []; }
   },
 
   saveAlbum: async (album: GalleryAlbum) => {
@@ -274,10 +338,12 @@ export const DatabaseService = {
   deleteAlbum: (id: string) => supabase.from('gallery_albums').delete().eq('id', id),
 
   getBlocks: async (): Promise<DisplayBlock[]> => {
-      const { data } = await supabase.from('display_blocks').select('*').order('order_index', { ascending: true });
-      return (data || []).map((b: any) => ({
-          id: b.id, name: b.name, position: b.position, type: b.type, order: b.order_index, itemCount: b.item_count, isVisible: b.is_visible, htmlContent: b.html_content, targetPage: b.target_page, customColor: b.custom_color || '#1e3a8a', customTextColor: b.custom_text_color || '#1e3a8a'
-      }));
+      try {
+        const data = await fetchWithRetry<any[]>(() => supabase.from('display_blocks').select('*').order('order_index', { ascending: true }));
+        return (data || []).map((b: any) => ({
+            id: b.id, name: b.name, position: b.position, type: b.type, order: b.order_index, itemCount: b.item_count, isVisible: b.is_visible, htmlContent: b.html_content, targetPage: b.target_page, customColor: b.custom_color || '#1e3a8a', customTextColor: b.custom_text_color || '#1e3a8a'
+        }));
+      } catch(e) { return []; }
   },
 
   saveBlock: async (block: DisplayBlock) => {
@@ -294,7 +360,7 @@ export const DatabaseService = {
 
   getMenu: async (): Promise<MenuItem[]> => {
       try {
-          const { data } = await supabase.from('menu_items').select('*').order('order_index', { ascending: true });
+          const data = await fetchWithRetry<any[]>(() => supabase.from('menu_items').select('*').order('order_index', { ascending: true }));
           const menu = (data || []).map((m: any) => ({ id: m.id, label: m.label, path: m.path, order: m.order_index }));
           if (menu.length > 0) setCache(CACHE_KEYS.MENU, menu);
           return menu;
@@ -321,8 +387,10 @@ export const DatabaseService = {
   },
 
   getPostCategories: async (): Promise<PostCategory[]> => {
-     const { data } = await supabase.from('post_categories').select('*').order('order_index', { ascending: true });
-     return (data || []).map((c: any) => ({ id: c.id, name: c.name, slug: c.slug, color: c.color, order: c.order_index }));
+     try {
+       const data = await fetchWithRetry<any[]>(() => supabase.from('post_categories').select('*').order('order_index', { ascending: true }));
+       return (data || []).map((c: any) => ({ id: c.id, name: c.name, slug: c.slug, color: c.color, order: c.order_index }));
+     } catch(e) { return []; }
   },
 
   savePostCategory: async (cat: PostCategory) => {
@@ -334,8 +402,10 @@ export const DatabaseService = {
   deletePostCategory: (id: string) => supabase.from('post_categories').delete().eq('id', id),
 
   getDocCategories: async (): Promise<DocumentCategory[]> => {
-    const { data } = await supabase.from('document_categories').select('*').order('order_index', { ascending: true });
-    return (data || []).map((c: any) => ({ id: c.id, name: c.name, slug: c.slug, description: c.description, order: c.order_index || 0 }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('document_categories').select('*').order('order_index', { ascending: true }));
+      return (data || []).map((c: any) => ({ id: c.id, name: c.name, slug: c.slug, description: c.description, order: c.order_index || 0 }));
+    } catch(e) { return []; }
   },
 
   saveDocCategory: async (cat: DocumentCategory) => {
@@ -344,7 +414,6 @@ export const DatabaseService = {
     else await supabase.from('document_categories').insert(dbCat);
   },
 
-  // Added missing method to handle reordering of document categories
   saveDocCategoriesOrder: async (categories: DocumentCategory[]) => {
     for (const cat of categories) {
       await supabase.from('document_categories').update({ order_index: cat.order }).eq('id', cat.id);
@@ -354,8 +423,10 @@ export const DatabaseService = {
   deleteDocCategory: (id: string) => supabase.from('document_categories').delete().eq('id', id),
 
   getVideos: async (): Promise<Video[]> => {
-    const { data } = await supabase.from('videos').select('*').order('order_index', { ascending: true });
-    return (data || []).map((v: any) => ({ id: v.id, title: v.title, youtubeUrl: v.youtube_url, order: v.order_index }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('videos').select('*').order('order_index', { ascending: true }));
+      return (data || []).map((v: any) => ({ id: v.id, title: v.title, youtubeUrl: v.youtube_url, order: v.order_index }));
+    } catch(e) { return []; }
   },
 
   saveVideo: async (video: Video) => {
@@ -367,8 +438,10 @@ export const DatabaseService = {
   deleteVideo: (id: string) => supabase.from('videos').delete().eq('id', id),
 
   getIntroductions: async (): Promise<IntroductionArticle[]> => {
-    const { data } = await supabase.from('school_introductions').select('*').order('order_index', { ascending: true });
-    return (data || []).map((i: any) => ({ id: i.id, title: i.title, slug: i.slug, content: i.content, imageUrl: i.image_url, order: i.order_index, isVisible: i.is_visible }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('school_introductions').select('*').order('order_index', { ascending: true }));
+      return (data || []).map((i: any) => ({ id: i.id, title: i.title, slug: i.slug, content: i.content, imageUrl: i.image_url, order: i.order_index, isVisible: i.is_visible }));
+    } catch(e) { return []; }
   },
 
   saveIntroduction: async (intro: IntroductionArticle) => {
@@ -380,8 +453,10 @@ export const DatabaseService = {
   deleteIntroduction: (id: string) => supabase.from('school_introductions').delete().eq('id', id),
 
   getGallery: async (): Promise<GalleryImage[]> => {
-     const { data } = await supabase.from('gallery_images').select('*').order('created_at', { ascending: false });
-     return (data || []).map((i: any) => ({ id: i.id, url: i.url, caption: i.caption, albumId: i.album_id }));
+     try {
+       const data = await fetchWithRetry<any[]>(() => supabase.from('gallery_images').select('*').order('created_at', { ascending: false }));
+       return (data || []).map((i: any) => ({ id: i.id, url: i.url, caption: i.caption, albumId: i.album_id }));
+     } catch(e) { return []; }
   },
 
   saveImage: async (image: GalleryImage) => {
@@ -393,8 +468,10 @@ export const DatabaseService = {
   deleteImage: (id: string) => supabase.from('gallery_images').delete().eq('id', id),
 
   getUsers: async (): Promise<User[]> => {
-    const { data } = await supabase.from('user_profiles').select('*');
-    return (data || []).map((u: any) => ({ id: u.id, username: u.username, fullName: u.full_name, role: u.role as UserRole, email: u.username + '@school.edu.vn' }));
+    try {
+      const data = await fetchWithRetry<any[]>(() => supabase.from('user_profiles').select('*'));
+      return (data || []).map((u: any) => ({ id: u.id, username: u.username, fullName: u.full_name, role: u.role as UserRole, email: u.username + '@school.edu.vn' }));
+    } catch(e) { return []; }
   },
 
   saveUser: async (user: User) => {
