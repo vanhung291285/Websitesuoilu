@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { SchoolConfig, FooterLink } from '../../types';
 import { DatabaseService } from '../../services/database';
-import { Settings, Globe, Phone, Share2, Search, Save, Layout, Upload, Link as LinkIcon, Image as ImageIcon, FolderOpen, Palette, MessageCircle, List, Plus, Trash2, AlertCircle, RotateCcw } from 'lucide-react';
+import { Settings, Globe, Phone, Share2, Search, Save, Layout, Upload, Link as LinkIcon, Image as ImageIcon, FolderOpen, Palette, MessageCircle, List, Plus, Trash2, AlertCircle, RotateCcw, Type } from 'lucide-react';
 
 export const ManageSettings: React.FC = () => {
   const [config, setConfig] = useState<SchoolConfig | null>(null);
@@ -358,6 +358,21 @@ export const ManageSettings: React.FC = () => {
 
           {activeTab === 'display' && (
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* School Name Input added as requested */}
+                <div className="bg-gray-50 p-6 rounded-2xl border-2 border-gray-100 md:col-span-3">
+                    <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest flex items-center">
+                        <Type size={16} className="mr-2"/> Tên trường hiển thị trên Banner
+                    </label>
+                    <input 
+                        type="text" 
+                        className="w-full border-2 border-white p-4 rounded-xl font-black text-lg text-gray-800 focus:border-blue-500 outline-none uppercase shadow-sm bg-white" 
+                        value={config.name} 
+                        onChange={e => setConfig({...config, name: e.target.value})}
+                        placeholder="NHẬP TÊN TRƯỜNG..."
+                    />
+                </div>
+
                 <div className="bg-gray-50 p-6 rounded-2xl border-2 border-gray-100">
                     <label className="block text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Màu chủ đạo (Menu/Header)</label>
                     <div className="flex items-center gap-3">
@@ -394,7 +409,7 @@ export const ManageSettings: React.FC = () => {
                     >
                         {config.bannerUrl && <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-transparent"></div>}
                         <h1 
-                          className="text-3xl md:text-4xl font-black uppercase leading-tight tracking-tight relative z-10 text-center px-4"
+                          className="text-3xl md:text-4xl font-black uppercase leading-tight tracking-tight relative z-10 text-center px-4 transition-all duration-300"
                           style={{ 
                             color: config.titleColor || '#fbbf24',
                             filter: `drop-shadow(0 2px 4px ${config.titleShadowColor || 'rgba(0,0,0,0.8)'})`
